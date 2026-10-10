@@ -51,6 +51,7 @@ export interface ModeloLLM {
   max_tokens?: number;
   system_prompt_default?: string;
   tags: string[];
+  galeria_urls?: string[];
   url_descarga?: string;
   url_huggingface?: string;
   url_ollama?: string;
@@ -77,6 +78,7 @@ export interface ModeloVideo {
   steps?: number;
   motion_bucket_id?: number;
   tags: string[];
+  galeria_urls?: string[];
   url_descarga?: string;
   imagen_principal?: string;
   notas?: string;

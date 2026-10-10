@@ -37,7 +37,7 @@ export async function importarDesdeCivitai(url: string): Promise<ImportResult> {
 
     // Mapear datos de Civitai a nuestro esquema
     const version = data.modelVersions?.[0];
-    const imagen = version?.images?.[0]?.url || null;
+    const imagen = version?.images?.[0]?.url || undefined;
 
     const modeloData: Partial<ModeloSD> = {
       categoria: 'sd',
@@ -45,9 +45,9 @@ export async function importarDesdeCivitai(url: string): Promise<ImportResult> {
       tipo: (data.type || 'Checkpoint').toLowerCase() as ModeloSD['tipo'],
       modelo_base: data.baseModel || 'SD 1.5',
       tags: data.tags || [],
-      galeria_urls: version?.images?.map((img: { url: string }) => img.url).slice(0, 10) || [],
+      galeria_urls: version?.images?.map((img: { url: string }) => img.url).slice(0, 12) || [],
       url_civitai: url,
-      imagen_principal: imagen,
+      imagen_principal: imagen || undefined,
       notas: data.description ? stripHtml(data.description).substring(0, 500) : '',
       prompt_referencia: version?.trainedWords?.join(', ') || '',
     };

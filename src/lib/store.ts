@@ -208,7 +208,7 @@ export function crearModelo(modelo: Partial<Modelo>): Modelo {
     fecha_actualizacion: new Date().toISOString(),
     estado: modelo.estado || 'activo',
     tags: modelo.tags || [],
-    galeria_urls: (modelo as ModeloSD).galeria_urls || [],
+    galeria_urls: modelo.galeria_urls || [],
   } as Modelo;
   modelos.push(nuevo);
   guardarModelos(modelos);

@@ -1,4 +1,4 @@
-// Importador desde HuggingFace API
+// Importador desde HuggingFace API con extracción de galería
 import { ImportResult, ModeloLLM, ModeloSD } from '../../types';
 
 /**
@@ -28,6 +28,31 @@ export async function importarDesdeHuggingFace(url: string): Promise<ImportResul
 
     const data = await response.json();
 
+    // Intentar obtener imágenes del repositorio (archivos de imagen)
+    let galeriaUrls: string[] = [];
+    try {
+      const treeResponse = await fetch(`https://huggingface.co/api/models/${repoId}/tree/main`);
+      if (treeResponse.ok) {
+        const tree = await treeResponse.json();
+        // Filtrar archivos de imagen
+        const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+        const imageFiles = tree
+          .filter((file: any) => {
+            const name = (file.path || file.rfilename || '').toLowerCase();
+            return imageExtensions.some(ext => name.endsWith(ext));
+          })
+          .slice(0, 12); // Máximo 12 imágenes
+        
+        galeriaUrls = imageFiles.map((file: any) => {
+          const path = file.path || file.rfilename;
+          return `https://huggingface.co/${repoId}/resolve/main/${path}`;
+        });
+      }
+    } catch {
+      // Si falla la obtención de galería, continuamos sin ella
+      console.warn('No se pudo obtener la galería de imágenes del repositorio');
+    }
+
     // Determinar si es un modelo SD o LLM basado en tags
     const tags: string[] = data.tags || [];
     const isSD = tags.some(t => ['stable-diffusion', 'diffusers', 'text-to-image'].includes(t));
@@ -35,14 +60,16 @@ export async function importarDesdeHuggingFace(url: string): Promise<ImportResul
 
     if (isSD) {
       // Modelo de Stable Diffusion
+      const imagenPrincipal = galeriaUrls[0] || undefined;
       const modeloData: Partial<ModeloSD> = {
         categoria: 'sd',
         nombre: data.modelId || data.id || 'Modelo sin nombre',
         tipo: 'checkpoint',
         modelo_base: detectBaseModel(tags),
         tags: tags.slice(0, 20),
+        galeria_urls: galeriaUrls,
         url_huggingface: url,
-        imagen_principal: data.cardData?.license ? undefined : undefined,
+        imagen_principal: imagenPrincipal,
         notas: data.cardData?.model_description || data.description || '',
       };
       return { success: true, data: modeloData };
@@ -57,6 +84,8 @@ export async function importarDesdeHuggingFace(url: string): Promise<ImportResul
         tamaño_parametros: data.cardData?.model_params_count || '',
         tags: tags.slice(0, 20),
         url_huggingface: url,
+        imagen_principal: galeriaUrls[0] || undefined,
+        galeria_urls: galeriaUrls,
         notas: data.cardData?.model_description || '',
       };
 
@@ -76,6 +105,8 @@ export async function importarDesdeHuggingFace(url: string): Promise<ImportResul
         creador: data.author || extractAuthor(repoId),
         tags: tags.slice(0, 20),
         url_huggingface: url,
+        imagen_principal: galeriaUrls[0] || undefined,
+        galeria_urls: galeriaUrls,
         notas: `Modelo importado desde HuggingFace. Tags: ${tags.join(', ')}`,
       };
       return { success: true, data: modeloData };

@@ -1,6 +1,6 @@
-// Modal de importación desde URLs externas
-import React, { useState } from 'react';
-import { Modelo, ModeloSD, ModeloLLM } from '../types';
+// Modal de importación desde URLs externas con soporte de galería
+import React, { useState, useRef } from 'react';
+import { Modelo, ModeloSD } from '../types';
 import { importarDesdeCivitai } from '../lib/importers/civitai';
 import { importarDesdeHuggingFace } from '../lib/importers/huggingface';
 
@@ -10,6 +10,7 @@ interface ImportModalProps {
 }
 
 type FuenteImport = 'auto' | 'civitai' | 'huggingface';
+type ImagenModo = 'url' | 'archivo' | 'galeria';
 
 export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) => {
   const [url, setUrl] = useState('');
@@ -18,11 +19,81 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Partial<Modelo> | null>(null);
   const [editData, setEditData] = useState<Record<string, any>>({});
+  const [galeriaUrls, setGaleriaUrls] = useState<string[]>([]);
+  const [imagenModo, setImagenModo] = useState<ImagenModo>('url');
+  const [imagenArchivo, setImagenArchivo] = useState<string | null>(null);
+  const [nuevaUrlGaleria, setNuevaUrlGaleria] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const detectarFuente = (url: string): FuenteImport => {
     if (url.includes('civitai.com')) return 'civitai';
     if (url.includes('huggingface.co')) return 'huggingface';
     return 'auto';
+  };
+
+  // Convertir archivo a base64 data URL
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Manejar subida de archivo
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo
+    if (!file.type.startsWith('image/')) {
+      setError('El archivo debe ser una imagen (PNG, JPG, WebP)');
+      return;
+    }
+
+    // Validar tamaño (máx 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('La imagen no debe superar los 5MB');
+      return;
+    }
+
+    try {
+      const base64 = await fileToBase64(file);
+      setImagenArchivo(base64);
+      setEditData(prev => ({ ...prev, imagen_principal: base64 }));
+      setError(null);
+    } catch {
+      setError('Error al procesar la imagen');
+    }
+  };
+
+  // Seleccionar imagen de la galería como principal
+  const seleccionarDeGaleria = (url: string) => {
+    setEditData(prev => ({ ...prev, imagen_principal: url }));
+    setImagenModo('galeria');
+  };
+
+  // Agregar URL a galería
+  const agregarUrlGaleria = () => {
+    if (nuevaUrlGaleria.trim() && !galeriaUrls.includes(nuevaUrlGaleria.trim())) {
+      setGaleriaUrls(prev => [...prev, nuevaUrlGaleria.trim()]);
+      setNuevaUrlGaleria('');
+    }
+  };
+
+  // Eliminar URL de galería
+  const eliminarUrlGaleria = (index: number) => {
+    setGaleriaUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Mover imagen en galería
+  const moverGaleria = (index: number, dir: -1 | 1) => {
+    const newIndex = index + dir;
+    if (newIndex < 0 || newIndex >= galeriaUrls.length) return;
+    const newGaleria = [...galeriaUrls];
+    [newGaleria[index], newGaleria[newIndex]] = [newGaleria[newIndex], newGaleria[index]];
+    setGaleriaUrls(newGaleria);
   };
 
   const analizarURL = async () => {
@@ -34,6 +105,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
     setLoading(true);
     setError(null);
     setPreview(null);
+    setGaleriaUrls([]);
+    setImagenArchivo(null);
 
     try {
       const fuenteDetectada = fuente === 'auto' ? detectarFuente(url) : fuente;
@@ -54,6 +127,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
 
       if (result.success && result.data) {
         setPreview(result.data);
+        
+        // Extraer galería
+        const galeriaExtraida = (result.data as Partial<ModeloSD>).galeria_urls || [];
+        setGaleriaUrls(galeriaExtraida);
+        
         setEditData({
           nombre: result.data.nombre || '',
           tags: (result.data.tags || []).join(', '),
@@ -62,7 +140,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
           tipo: result.data.tipo || '',
           modelo_base: (result.data as Partial<ModeloSD>).modelo_base || '',
           imagen_principal: result.data.imagen_principal || '',
+          galeria_urls: galeriaExtraida.join('\n'),
         });
+
+        // Si hay galería, usar modo galería
+        if (galeriaExtraida.length > 0) {
+          setImagenModo('galeria');
+        } else {
+          setImagenModo('url');
+        }
       } else {
         setError(result.error || 'Error desconocido al importar');
       }
@@ -76,6 +162,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
   const handleImport = () => {
     if (!preview) return;
 
+    // Determinar imagen principal final
+    let imagenFinal = editData.imagen_principal || preview.imagen_principal || '';
+    if (imagenModo === 'archivo' && imagenArchivo) {
+      imagenFinal = imagenArchivo;
+    }
+
     const datos: Partial<Modelo> = {
       ...preview,
       nombre: editData.nombre || preview.nombre,
@@ -83,7 +175,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
       notas: editData.notas || preview.notas,
       categoria: (editData.categoria as any) || preview.categoria,
       tipo: (editData.tipo as any) || preview.tipo,
-      imagen_principal: editData.imagen_principal || preview.imagen_principal,
+      imagen_principal: imagenFinal,
+      galeria_urls: galeriaUrls,
     };
 
     onImport(datos);
@@ -92,10 +185,15 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
   const inputClass = "w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none transition";
   const labelClass = "block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wide";
 
+  // Imagen actual seleccionada
+  const imagenActual = imagenModo === 'archivo' && imagenArchivo 
+    ? imagenArchivo 
+    : editData.imagen_principal || preview?.imagen_principal || '';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div 
-        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
+        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -106,7 +204,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-5">
           {/* Fuente */}
           <div>
             <label className={labelClass}>Fuente</label>
@@ -161,8 +259,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
 
           {/* Error */}
           {error && (
-            <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-sm text-red-200">
-              ⚠️ {error}
+            <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-sm text-red-200 flex items-center gap-2">
+              <span>⚠️</span> {error}
+              <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-200">✕</button>
             </div>
           )}
 
@@ -172,22 +271,215 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
               <div className="animate-pulse flex flex-col items-center gap-2">
                 <div className="w-12 h-12 bg-slate-700 rounded-full animate-pulse" />
                 <p className="text-slate-400 text-sm">Consultando API externa...</p>
+                <p className="text-slate-500 text-xs">Extrayendo datos e imágenes del modelo</p>
               </div>
             </div>
           )}
 
           {/* Preview de datos importados */}
           {preview && !loading && (
-            <div className="space-y-4 border-t border-slate-700 pt-4">
-              <h3 className="text-sm font-semibold text-cyan-300">✅ Datos Extraídos (editables)</h3>
-              
-              {/* Preview imagen */}
-              {preview.imagen_principal && (
-                <div className="h-32 rounded-lg overflow-hidden border border-slate-700">
-                  <img src={preview.imagen_principal} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-              )}
+            <div className="space-y-5 border-t border-slate-700 pt-5">
+              <h3 className="text-sm font-semibold text-cyan-300 flex items-center gap-2">
+                ✅ Datos Extraídos
+                <span className="text-xs text-slate-500 font-normal">(editables)</span>
+              </h3>
 
+              {/* ===== SECCIÓN DE IMAGEN PRINCIPAL ===== */}
+              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+                <label className={labelClass + ' mb-3'}>🖼️ Imagen Principal</label>
+                
+                {/* Selector de modo */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setImagenModo('url')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      imagenModo === 'url' ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                    }`}
+                  >
+                    🔗 URL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImagenModo('archivo')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      imagenModo === 'archivo' ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                    }`}
+                  >
+                    📁 Subir Archivo
+                  </button>
+                  {galeriaUrls.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setImagenModo('galeria')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        imagenModo === 'galeria' ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                      }`}
+                    >
+                      🎨 De Galería ({galeriaUrls.length})
+                    </button>
+                  )}
+                </div>
+
+                {/* Preview de la imagen actual */}
+                {imagenActual && (
+                  <div className="mb-3 relative group">
+                    <div className="h-40 rounded-lg overflow-hidden border border-slate-600">
+                      <img src={imagenActual} alt="Imagen principal" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 rounded text-[10px] text-white backdrop-blur-sm">
+                      {imagenModo === 'url' ? '🔗 URL' : imagenModo === 'archivo' ? '📁 Archivo' : '🎨 Galería'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Modo URL */}
+                {imagenModo === 'url' && (
+                  <input
+                    type="url"
+                    value={typeof editData.imagen_principal === 'string' && !editData.imagen_principal?.startsWith('data:') ? editData.imagen_principal || '' : ''}
+                    onChange={(e) => { setEditData(prev => ({ ...prev, imagen_principal: e.target.value })); setImagenArchivo(null); }}
+                    className={inputClass}
+                    placeholder="https://ejemplo.com/imagen.jpg"
+                  />
+                )}
+
+                {/* Modo Archivo */}
+                {imagenModo === 'archivo' && (
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 border border-dashed border-slate-500 rounded-lg text-sm text-slate-300 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span className="text-lg">📁</span>
+                      {imagenArchivo ? 'Cambiar imagen...' : 'Seleccionar imagen desde tu equipo'}
+                    </button>
+                    <p className="text-[10px] text-slate-500 mt-1">PNG, JPG o WebP. Máximo 5MB.</p>
+                  </div>
+                )}
+
+                {/* Modo Galería - Grid seleccionable */}
+                {imagenModo === 'galeria' && galeriaUrls.length > 0 && (
+                  <div>
+                    <p className="text-xs text-slate-400 mb-2">Haz clic en una imagen para seleccionarla como principal:</p>
+                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                      {galeriaUrls.map((gUrl, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => seleccionarDeGaleria(gUrl)}
+                          className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                            imagenActual === gUrl 
+                              ? 'border-cyan-400 ring-2 ring-cyan-400/50 scale-105' 
+                              : 'border-slate-600 hover:border-cyan-500/50'
+                          }`}
+                        >
+                          <img src={gUrl} alt={`Galería ${i + 1}`} className="w-full h-full object-cover" />
+                          {imagenActual === gUrl && (
+                            <div className="absolute inset-0 bg-cyan-500/20 flex items-center justify-center">
+                              <span className="text-white text-lg">✓</span>
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-[9px] text-white text-center py-0.5">
+                            #{i + 1}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ===== SECCIÓN DE GALERÍA ===== */}
+              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label className={labelClass + ' mb-0'}>🖼️ Galería de Imágenes</label>
+                  <span className="text-xs text-slate-500">{galeriaUrls.length} imágenes</span>
+                </div>
+
+                {/* Grid de galería actual */}
+                {galeriaUrls.length > 0 && (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
+                    {galeriaUrls.map((gUrl, i) => (
+                      <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-600">
+                        <img src={gUrl} alt={`Galería ${i + 1}`} className="w-full h-full object-cover" />
+                        {/* Overlay con acciones */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => moverGaleria(i, -1)}
+                              disabled={i === 0}
+                              className="w-6 h-6 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 rounded text-xs text-white flex items-center justify-center"
+                              title="Mover izquierda"
+                            >
+                              ←
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moverGaleria(i, 1)}
+                              disabled={i === galeriaUrls.length - 1}
+                              className="w-6 h-6 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 rounded text-xs text-white flex items-center justify-center"
+                              title="Mover derecha"
+                            >
+                              →
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => seleccionarDeGaleria(gUrl)}
+                              className="w-6 h-6 bg-cyan-700 hover:bg-cyan-600 rounded text-xs text-white flex items-center justify-center"
+                              title="Usar como principal"
+                            >
+                              ★
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => eliminarUrlGaleria(i)}
+                              className="w-6 h-6 bg-red-700 hover:bg-red-600 rounded text-xs text-white flex items-center justify-center"
+                              title="Eliminar"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-[9px] text-white text-center py-0.5">
+                          #{i + 1}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Agregar URL a galería */}
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={nuevaUrlGaleria}
+                    onChange={(e) => setNuevaUrlGaleria(e.target.value)}
+                    className={inputClass + ' flex-1'}
+                    placeholder="Agregar URL de imagen a la galería..."
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), agregarUrlGaleria())}
+                  />
+                  <button
+                    type="button"
+                    onClick={agregarUrlGaleria}
+                    disabled={!nuevaUrlGaleria.trim()}
+                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
+                  >
+                    + Agregar
+                  </button>
+                </div>
+              </div>
+
+              {/* ===== DATOS BÁSICOS ===== */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelClass}>Nombre</label>
@@ -220,26 +512,23 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
               </div>
 
               <div>
-                <label className={labelClass}>URL Imagen</label>
-                <input type="text" value={editData.imagen_principal || ''} onChange={(e) => setEditData(prev => ({ ...prev, imagen_principal: e.target.value }))} className={inputClass} />
-              </div>
-
-              <div>
                 <label className={labelClass}>Notas</label>
                 <textarea value={editData.notas || ''} onChange={(e) => setEditData(prev => ({ ...prev, notas: e.target.value }))} className={inputClass + ' h-20 resize-none'} />
               </div>
 
-              {/* Info adicional del modelo importado */}
-              <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
-                <h4 className="text-xs font-semibold text-slate-400 mb-2">Información adicional detectada:</h4>
-                <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
-                  {(preview as any).url_civitai && <span>🔗 Civitai: {(preview as any).url_civitai}</span>}
-                  {(preview as any).url_huggingface && <span>🤗 HuggingFace: {(preview as any).url_huggingface}</span>}
-                  {(preview as any).creador && <span>👤 Creador: {(preview as any).creador}</span>}
-                  {(preview as any).modelo_vae && <span>🎨 VAE: {(preview as any).modelo_vae}</span>}
-                  {(preview as any).prompt_referencia && <span>✨ Prompt: {(preview as any).prompt_referencia.substring(0, 50)}...</span>}
+              {/* Info adicional */}
+              {(preview as any).url_civitai || (preview as any).url_huggingface || (preview as any).creador ? (
+                <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
+                  <h4 className="text-xs font-semibold text-slate-400 mb-2">Información adicional detectada:</h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                    {(preview as any).url_civitai && <span>🔗 Civitai: {(preview as any).url_civitai}</span>}
+                    {(preview as any).url_huggingface && <span>🤗 HuggingFace: {(preview as any).url_huggingface}</span>}
+                    {(preview as any).creador && <span>👤 Creador: {(preview as any).creador}</span>}
+                    {(preview as any).modelo_vae && <span>🎨 VAE: {(preview as any).modelo_vae}</span>}
+                    {(preview as any).prompt_referencia && <span className="col-span-2">✨ Prompt: {(preview as any).prompt_referencia.substring(0, 80)}...</span>}
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           )}
 

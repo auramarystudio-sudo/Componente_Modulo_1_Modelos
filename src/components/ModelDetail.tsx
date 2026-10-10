@@ -344,12 +344,17 @@ export const ModelDetail: React.FC<ModelDetailProps> = ({ modelo, onClose, onEdi
           )}
 
           {/* Galería */}
-          {modelo.categoria === 'sd' && (modelo as ModeloSD).galeria_urls && (modelo as ModeloSD).galeria_urls.length > 0 && (
+          {modelo.galeria_urls && modelo.galeria_urls.length > 0 && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-slate-300 mb-2">🖼️ Galería</h3>
+              <h3 className="text-sm font-semibold text-slate-300 mb-2">🖼️ Galería ({modelo.galeria_urls.length} imágenes)</h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {(modelo as ModeloSD).galeria_urls.map((url, i) => (
-                  <img key={i} src={url} alt={`Galería ${i + 1}`} className="w-full h-32 object-cover rounded-lg border border-slate-700" />
+                {modelo.galeria_urls.map((url, i) => (
+                  <div key={i} className="relative group">
+                    <img src={url} alt={`Galería ${i + 1}`} className="w-full h-32 object-cover rounded-lg border border-slate-700" />
+                    <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/60 rounded text-[10px] text-white backdrop-blur-sm">
+                      #{i + 1}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
