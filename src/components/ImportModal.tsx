@@ -376,13 +376,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
                           key={i}
                           type="button"
                           onClick={() => seleccionarDeGaleria(gUrl)}
-                          className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                          className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all bg-slate-800 ${
                             imagenActual === gUrl 
                               ? 'border-cyan-400 ring-2 ring-cyan-400/50 scale-105' 
                               : 'border-slate-600 hover:border-cyan-500/50'
                           }`}
                         >
-                          <img src={gUrl} alt={`Galería ${i + 1}`} className="w-full h-full object-cover" />
+                          <img src={gUrl} alt={`Galería ${i + 1}`} className="w-full h-full object-contain p-1" />
                           {imagenActual === gUrl && (
                             <div className="absolute inset-0 bg-cyan-500/20 flex items-center justify-center">
                               <span className="text-white text-lg">✓</span>
@@ -409,8 +409,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ onImport, onClose }) =
                 {galeriaUrls.length > 0 && (
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3">
                     {galeriaUrls.map((gUrl, i) => (
-                      <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-600">
-                        <img src={gUrl} alt={`Galería ${i + 1}`} className="w-full h-full object-cover" />
+                      <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-600 bg-slate-800">
+                        <img src={gUrl} alt={`Galería ${i + 1}`} className="w-full h-full object-contain p-1" />
                         {/* Overlay con acciones */}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                           <div className="flex gap-1">

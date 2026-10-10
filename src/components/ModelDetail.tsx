@@ -1,6 +1,7 @@
 // Modal de detalle de modelo
 import React, { useState } from 'react';
 import { Modelo, ModeloSD, ModeloLLM, ModeloVideo } from '../types';
+import { GalleryModal } from './GalleryModal';
 
 interface ModelDetailProps {
   modelo: Modelo;
@@ -11,6 +12,7 @@ interface ModelDetailProps {
 
 export const ModelDetail: React.FC<ModelDetailProps> = ({ modelo, onClose, onEditar, onEliminar }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
 
   const copiarTexto = (texto: string, campo: string) => {
     navigator.clipboard.writeText(texto).then(() => {
@@ -346,15 +348,30 @@ export const ModelDetail: React.FC<ModelDetailProps> = ({ modelo, onClose, onEdi
           {/* Galería */}
           {modelo.galeria_urls && modelo.galeria_urls.length > 0 && (
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-slate-300 mb-2">🖼️ Galería ({modelo.galeria_urls.length} imágenes)</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <h3 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
+                🖼️ Galería 
+                <span className="text-xs text-slate-500 font-normal">({modelo.galeria_urls.length} imágenes - clic para ampliar)</span>
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {modelo.galeria_urls.map((url, i) => (
-                  <div key={i} className="relative group">
-                    <img src={url} alt={`Galería ${i + 1}`} className="w-full h-32 object-cover rounded-lg border border-slate-700" />
-                    <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/60 rounded text-[10px] text-white backdrop-blur-sm">
+                  <button
+                    key={i}
+                    onClick={() => setGalleryIndex(i)}
+                    className="relative group aspect-square bg-slate-800 rounded-lg overflow-hidden border border-slate-700 hover:border-cyan-500/50 transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-cyan-500/10"
+                  >
+                    <img 
+                      src={url} 
+                      alt={`Galería ${i + 1}`} 
+                      className="w-full h-full object-contain p-1"
+                    />
+                    {/* Overlay al hover */}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
+                      <span className="text-white text-2xl opacity-0 group-hover:opacity-100 transition-opacity">🔍</span>
+                    </div>
+                    <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-white backdrop-blur-sm">
                       #{i + 1}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -398,6 +415,15 @@ export const ModelDetail: React.FC<ModelDetailProps> = ({ modelo, onClose, onEdi
           </div>
         </div>
       </div>
+
+      {/* Modal de galería con carrusel */}
+      {galleryIndex !== null && modelo.galeria_urls && (
+        <GalleryModal
+          images={modelo.galeria_urls}
+          initialIndex={galleryIndex}
+          onClose={() => setGalleryIndex(null)}
+        />
+      )}
     </div>
   );
 };
